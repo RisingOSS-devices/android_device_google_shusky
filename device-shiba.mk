@@ -14,8 +14,20 @@
 # limitations under the License.
 #
 
+# Restrict the visibility of Android.bp files to improve build analysis time
+$(call inherit-product-if-exists, vendor/google/products/sources_pixel.mk)
+
 TARGET_KERNEL_DIR ?= device/google/shusky-kernel
-TARGET_BOARD_KERNEL_HEADERS := device/google/shusky-kernel/kernel-headers
+TARGET_BOARD_KERNEL_HEADERS ?= device/google/shusky-kernel/kernel-headers
+
+ifdef RELEASE_GOOGLE_SHIBA_KERNEL_VERSION
+TARGET_LINUX_KERNEL_VERSION := $(RELEASE_GOOGLE_SHIBA_KERNEL_VERSION)
+endif
+
+ifdef RELEASE_GOOGLE_SHIBA_KERNEL_DIR
+TARGET_KERNEL_DIR := $(RELEASE_GOOGLE_SHIBA_KERNEL_DIR)
+TARGET_BOARD_KERNEL_HEADERS := $(RELEASE_GOOGLE_SHIBA_KERNEL_DIR)/kernel-headers
+endif
 
 LOCAL_PATH := device/google/shusky
 
@@ -26,18 +38,22 @@ $(call inherit-product-if-exists, vendor/google_devices/shusky/proprietary/shiba
 $(call inherit-product-if-exists, vendor/google_devices/shiba/proprietary/device-vendor.mk)
 $(call inherit-product-if-exists, vendor/google_devices/shusky/proprietary/WallpapersShiba.mk)
 
-DEVICE_PACKAGE_OVERLAYS += device/google/shusky/shiba/overlay
+# Use libc variant by default
+PRODUCT_USE_SCUDO := true
 
+DEVICE_PACKAGE_OVERLAYS += device/google/shusky/shiba/overlay
+CAMERA_PRODUCT ?= shiba
+
+ifeq ($(RELEASE_PIXEL_AIDL_AUDIO_HAL_ZUMA),true)
+USE_AUDIO_HAL_AIDL := true
+endif
+
+include device/google/shusky/camera/camera.mk
 include device/google/shusky/audio/shiba/audio-tables.mk
 include device/google/zuma/device-shipping-common.mk
 include hardware/google/pixel/vibrator/cs40l26/device.mk
 include device/google/gs-common/bcmbt/bluetooth.mk
 include device/google/gs-common/touch/gti/gti.mk
-
-# go/lyric-soong-variables
-$(call soong_config_set,lyric,camera_hardware,shiba)
-$(call soong_config_set,lyric,tuning_product,shiba)
-$(call soong_config_set,google3a_config,target_device,shiba)
 
 # Init files
 PRODUCT_COPY_FILES += \
@@ -54,8 +70,6 @@ PRODUCT_COPY_FILES += \
 		device/google/shusky/shiba/radio/shiba_display_primary_mipi_coex_table.csv:$(TARGET_COPY_OUT_VENDOR)/etc/modem/display_primary_mipi_coex_table.csv
 
 # Camera
-PRODUCT_COPY_FILES += \
-	device/google/shusky/media_profiles_shiba.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_profiles_V1_0.xml
 PRODUCT_PROPERTY_OVERRIDES += \
         persist.vendor.camera.rls_range_supported=false
 
@@ -70,7 +84,7 @@ PRODUCT_COPY_FILES += \
 	device/google/shusky/nfc/libnfc-nci.conf:$(TARGET_COPY_OUT_PRODUCT)/etc/libnfc-nci.conf
 
 PRODUCT_PACKAGES += \
-	NfcNci \
+	$(RELEASE_PACKAGE_NFC_STACK) \
 	Tag \
 	android.hardware.nfc-service.st
 
@@ -114,6 +128,11 @@ PRODUCT_PACKAGES += \
 # declare use of spatial audio
 PRODUCT_PROPERTY_OVERRIDES += \
        ro.audio.spatializer_enabled=true
+
+# Sound Dose
+PRODUCT_PACKAGES += \
+	android.hardware.audio.sounddose-vendor-impl \
+	audio_sounddose_aoc
 
 # Audio CCA property
 PRODUCT_PROPERTY_OVERRIDES += \
@@ -174,13 +193,19 @@ PRODUCT_PRODUCT_PROPERTIES += \
 
 # Bluetooth LE Audio
 PRODUCT_PRODUCT_PROPERTIES += \
-	ro.bluetooth.leaudio_switcher.supported=true \
-	bluetooth.profile.bap.unicast.client.enabled=true \
-	bluetooth.profile.csip.set_coordinator.enabled=true \
-	bluetooth.profile.hap.client.enabled=true \
-	bluetooth.profile.mcp.server.enabled=true \
-	bluetooth.profile.ccp.server.enabled=true \
-	bluetooth.profile.vcp.controller.enabled=true
+	ro.bluetooth.leaudio_switcher.supported?=true \
+	bluetooth.profile.bap.unicast.client.enabled?=true \
+	bluetooth.profile.csip.set_coordinator.enabled?=true \
+	bluetooth.profile.hap.client.enabled?=true \
+	bluetooth.profile.mcp.server.enabled?=true \
+	bluetooth.profile.ccp.server.enabled?=true \
+	bluetooth.profile.vcp.controller.enabled?=true
+
+ifeq ($(RELEASE_PIXEL_BROADCAST_ENABLED), true)
+PRODUCT_PRODUCT_PROPERTIES += \
+	bluetooth.profile.bap.broadcast.assist.enabled=true \
+	bluetooth.profile.bap.broadcast.source.enabled=true
+endif
 
 # Bluetooth LE Audio enable hardware offloading
 PRODUCT_PRODUCT_PROPERTIES += \
@@ -191,14 +216,18 @@ PRODUCT_PRODUCT_PROPERTIES += \
 PRODUCT_COPY_FILES += \
 	device/google/shusky/bluetooth/le_audio_codec_capabilities.xml:$(TARGET_COPY_OUT_VENDOR)/etc/le_audio_codec_capabilities.xml
 
+# LE Audio Unicast Allowlist
+PRODUCT_PRODUCT_PROPERTIES += \
+    persist.bluetooth.leaudio.allow_list=SM-R510,WF-1000XM5
+
 # Bluetooth LE Audio CIS handover to SCO
 # Set the property only for the controller couldn't support CIS/SCO simultaneously. More detailed in b/242908683.
 PRODUCT_PRODUCT_PROPERTIES += \
 	persist.bluetooth.leaudio.notify.idle.during.call=true
 
-# Not support LE Audio dual mic SWB call based on the current launch strategy
+# Support LE Audio dual mic SWB call
 PRODUCT_PRODUCT_PROPERTIES += \
-    bluetooth.leaudio.dual_bidirection_swb.supported=false
+    bluetooth.leaudio.dual_bidirection_swb.supported=true
 
 # Support One-Handed mode
 PRODUCT_PRODUCT_PROPERTIES += \
@@ -246,6 +275,13 @@ PRODUCT_PACKAGES += \
 
 # Trusty liboemcrypto.so
 PRODUCT_SOONG_NAMESPACES += vendor/google_devices/shusky/prebuilts
+ifneq (,$(filter AP1%,$(RELEASE_PLATFORM_VERSION)))
+PRODUCT_SOONG_NAMESPACES += vendor/google_devices/shusky/prebuilts/trusty/24Q1
+else ifneq (,$(filter AP2% AP3%,$(RELEASE_PLATFORM_VERSION)))
+PRODUCT_SOONG_NAMESPACES += vendor/google_devices/shusky/prebuilts/trusty/24Q2
+else
+PRODUCT_SOONG_NAMESPACES += vendor/google_devices/shusky/prebuilts/trusty/trunk
+endif
 
 # Location
 # SDK build system
@@ -272,12 +308,19 @@ PRODUCT_VENDOR_PROPERTIES += \
 	persist.device_config.configuration.disable_rescue_party=true
 
 # Fingerprint HAL
-GOODIX_CONFIG_BUILD_VERSION := g7_trusty
-include device/google/gs101/fingerprint/udfps_common.mk
-ifeq ($(filter factory%, $(TARGET_PRODUCT)),)
-include device/google/gs101/fingerprint/udfps_shipping.mk
+ifneq (,$(filter AP1%,$(RELEASE_PLATFORM_VERSION)))
+APEX_FPS_TA_DIR := //vendor/google_devices/shusky/prebuilts/firmware/fingerprint/24Q1
+else ifneq (,$(filter AP2% AP3%,$(RELEASE_PLATFORM_VERSION)))
+APEX_FPS_TA_DIR := //vendor/google_devices/shusky/prebuilts/firmware/fingerprint/24Q2
 else
-include device/google/gs101/fingerprint/udfps_factory.mk
+APEX_FPS_TA_DIR := //vendor/google_devices/shusky/prebuilts/firmware/fingerprint/trunk
+endif
+GOODIX_CONFIG_BUILD_VERSION := g7_trusty
+$(call inherit-product-if-exists, vendor/goodix/udfps/configuration/udfps_common.mk)
+ifeq ($(filter factory%, $(TARGET_PRODUCT)),)
+$(call inherit-product-if-exists, vendor/goodix/udfps/configuration/udfps_shipping.mk)
+else
+$(call inherit-product-if-exists, vendor/goodix/udfps/configuration/udfps_factory.mk)
 endif
 
 # Fingerprint exposure compensation
@@ -285,7 +328,7 @@ PRODUCT_VENDOR_PROPERTIES += \
     persist.vendor.udfps.auto_exposure_compensation_supported=true
 
 # Display
-PRODUCT_DEFAULT_PROPERTY_OVERRIDES += ro.surface_flinger.set_idle_timer_ms=1500
+PRODUCT_DEFAULT_PROPERTY_OVERRIDES += ro.surface_flinger.set_idle_timer_ms=1000
 PRODUCT_DEFAULT_PROPERTY_OVERRIDES += ro.surface_flinger.ignore_hdr_camera_layers=true
 # lhbm peak brightness delay: decided by kernel
 PRODUCT_DEFAULT_PROPERTY_OVERRIDES += vendor.primarydisplay.lhbm.frames_to_reach_peak_brightness=0
@@ -303,14 +346,15 @@ PRODUCT_COPY_FILES += \
 	device/google/shusky/shiba/display_colordata_google-bigsurf_cal0.pb:$(TARGET_COPY_OUT_VENDOR)/etc/display_colordata_google-bigsurf_cal0.pb \
 	device/google/shusky/shiba/display_colordata_google-shoreline_cal0.pb:$(TARGET_COPY_OUT_VENDOR)/etc/display_colordata_google-shoreline_cal0.pb \
     device/google/shusky/shiba/display_golden_google-bigsurf_cal0.pb:$(TARGET_COPY_OUT_VENDOR)/etc/display_golden_google-bigsurf_cal0.pb \
-    device/google/shusky/shiba/display_golden_google-shoreline_cal0.pb:$(TARGET_COPY_OUT_VENDOR)/etc/display_golden_google-shoreline_cal0.pb
+    device/google/shusky/shiba/display_golden_google-shoreline_cal0.pb:$(TARGET_COPY_OUT_VENDOR)/etc/display_golden_google-shoreline_cal0.pb \
+    device/google/shusky/display_golden_external_display_cal2.pb:$(TARGET_COPY_OUT_VENDOR)/etc/display_golden_external_display_cal2.pb
 
 # Camera Vendor property
 PRODUCT_VENDOR_PROPERTIES += \
     persist.vendor.camera.front_720P_always_binning=true
 
 # Media Performance Class 14
-PRODUCT_PRODUCT_PROPERTIES += ro.odm.build.media_performance_class=33
+PRODUCT_PRODUCT_PROPERTIES += ro.odm.build.media_performance_class=34
 
 # Display LBE
 PRODUCT_DEFAULT_PROPERTY_OVERRIDES += vendor.display.lbe.supported=1
@@ -319,7 +363,7 @@ PRODUCT_DEFAULT_PROPERTY_OVERRIDES += vendor.display.lbe.supported=1
 ACTUATOR_MODEL := luxshare_ict_081545
 ADAPTIVE_HAPTICS_FEATURE := adaptive_haptics_v1
 PRODUCT_VENDOR_PROPERTIES += \
-    ro.vendor.vibrator.hal.chirp.enabled=0 \
+    persist.vendor.vibrator.hal.chirp.enabled=0 \
     ro.vendor.vibrator.hal.device.mass=0.187 \
     ro.vendor.vibrator.hal.loc.coeff=2.75 \
     persist.vendor.vibrator.hal.context.enable=false \
@@ -336,8 +380,15 @@ PRODUCT_VENDOR_PROPERTIES += \
     ro.vendor.vibrator.hal.pm.activetimeout=5
 
 # Increment the SVN for any official public releases
+ifdef RELEASE_SVN_SHIBA
+TARGET_SVN ?= $(RELEASE_SVN_SHIBA)
+else
+# Set this for older releases that don't use build flag
+TARGET_SVN ?= 36
+endif
+
 PRODUCT_VENDOR_PROPERTIES += \
-    ro.vendor.build.svn=10
+    ro.vendor.build.svn=$(TARGET_SVN)
 
 # P23 Devices no longer need rlsservice
 PRODUCT_VENDOR_PROPERTIES += \
@@ -381,10 +432,21 @@ PRODUCT_PRODUCT_PROPERTIES += \
 PRODUCT_VENDOR_PROPERTIES += \
     persist.vendor.camera.exif_reveal_make_model=true
 
+# AVF assignable devices xml
+PRODUCT_PACKAGES += shusky_assignable_devices.xml
+
 # Enable DeviceAsWebcam support
 PRODUCT_VENDOR_PROPERTIES += \
     ro.usb.uvc.enabled=true
 
-# DisplayPort should be disabled by default (b/300167292)
-PRODUCT_VENDOR_PROPERTIES += \
-       persist.vendor.usb.displayport.enabled=1
+PRODUCT_PACKAGES += \
+    NfcOverlayShiba
+
+# Set support hide display cutout feature
+PRODUCT_PRODUCT_PROPERTIES += \
+    ro.support_hide_display_cutout=true
+
+PRODUCT_PACKAGES += \
+    NoCutoutOverlay \
+    AvoidAppsInCutoutOverlay
+

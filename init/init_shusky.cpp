@@ -29,17 +29,10 @@ void OverrideProperty(const char* name, const char* value) {
 
 /*
  * Only for read-only properties. Properties that can be wrote to more
- * than once should be set in a typical init script (e.g. init.oplus.hw.rc)
+ * than once should be set in a typical init script (e.g. init.gs101.rc)
  * after the original property has been set.
  */
 void vendor_load_properties() {
-    OverrideProperty("ro.product.first_api_level", "32");
-    OverrideProperty("ro.rising.chipset", "Google Tensor 3");
-    OverrideProperty("ro.rising.maintainer", "Albinoman887");
-    OverrideProperty("service.adb.root", "1");
-    OverrideProperty("ro.adb.secure", "0");
-    OverrideProperty("ro.debuggable", "1");
-    OverrideProperty("ro.force.debuggable", "1");
-    OverrideProperty("persist.sys.usb.config", "adb");
-    OverrideProperty("sys.usb.config", "adb");
+    OverrideProperty("ro.rising.chipset", "Google Tensor G3");
+    OverrideProperty("ro.rising.maintainer", "EliteDarkKaiser");
 }
