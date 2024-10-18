@@ -15,8 +15,8 @@
 #
 
 PRODUCT_MAKEFILES := \
-    $(LOCAL_DIR)/rising_ripcurrent.mk \
-    $(LOCAL_DIR)/rising_ripcurrent_fullmte.mk \
+    $(LOCAL_DIR)/aosp_ripcurrent.mk \
+    $(LOCAL_DIR)/aosp_ripcurrent_fullmte.mk \
     $(LOCAL_DIR)/factory_ripcurrent.mk \
     $(LOCAL_DIR)/aosp_husky.mk \
     $(LOCAL_DIR)/aosp_husky_61_pgagnostic.mk \
